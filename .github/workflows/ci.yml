@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  rust:
+    name: Rust 核心引擎
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+          targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android
+      - uses: actions/cache@v4
+        with:
+          path: |
+            rust/target
+            ~/.cargo/registry
+          key: rust-${{ runner.os }}-${{ hashFiles('rust/Cargo.lock') }}
+      - name: 格式化检查
+        run: cargo fmt --manifest-path rust/Cargo.toml --all --check
+      - name: 单元测试
+        run: cargo test --manifest-path rust/Cargo.toml --workspace
+      - name: Clippy
+        run: cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets -- -D warnings
+
+  flutter-android:
+    name: Flutter 分析 + Android 构建
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.0
+          cache: true
+      - name: 获取 Flutter 依赖
+        run: flutter pub get
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: ndk;28.2.13676358
+      - uses: actions/cache@v4
+        with:
+          path: rust/target
+          key: rust-android-${{ runner.os }}-${{ hashFiles('rust/Cargo.lock') }}
+      - name: 配置 Android NDK
+        run: echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/28.2.13676358" >> "$GITHUB_ENV"
+      - name: 构建 native 库（全部 ABI）
+        run: bash rust/android_build.sh
+      - name: 校验 native ABI
+        run: |
+          test -f android/app/src/main/jniLibs/arm64-v8a/libstitch_bridge.so
+          test -f android/app/src/main/jniLibs/armeabi-v7a/libstitch_bridge.so
+          test -f android/app/src/main/jniLibs/x86_64/libstitch_bridge.so
+          test -f android/app/src/main/jniLibs/x86/libstitch_bridge.so
+      - name: 静态分析
+        run: flutter analyze
+      - name: Flutter 测试
+        run: flutter test
+      - name: Android APK 构建
+        run: flutter build apk --debug
+      - name: 上传 Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PixelForge-debug-apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error

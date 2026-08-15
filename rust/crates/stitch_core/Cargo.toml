@@ -1,0 +1,15 @@
+[package]
+name = "stitch_core"
+description = "Core image stitching engine for the Stitch app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+image = { workspace = true }
+png = "0.17"
+jpeg-encoder = "0.7.1"
+flate2 = "1"
+
+[dev-dependencies]

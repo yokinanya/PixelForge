@@ -1,0 +1,17 @@
+# Rust
+rust/target/
+
+# Flutter
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# 系统
+.DS_Store

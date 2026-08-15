@@ -1,0 +1,6 @@
+# Copy this file to android/key.properties and fill in your own values.
+# Do not commit android/key.properties or the keystore file.
+storePassword=YOUR_KEYSTORE_PASSWORD
+keyPassword=YOUR_KEY_PASSWORD
+keyAlias=pixelforge
+storeFile=/absolute/path/to/pixelforge-upload.jks

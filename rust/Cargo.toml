@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/stitch_core",
+    "crates/stitch_bridge",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+rust-version = "1.75"
+
+[workspace.dependencies]
+image = "0.25"
+stitch_core = { path = "crates/stitch_core" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

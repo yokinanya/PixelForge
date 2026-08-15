@@ -1,0 +1,29 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="cute_bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6366F1"/>
+      <stop offset="0.5" stop-color="#A855F7"/>
+      <stop offset="1" stop-color="#EC4899"/>
+    </linearGradient>
+    <linearGradient id="mint_jelly" x1="140" y1="180" x2="320" y2="360" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A7F3D0"/>
+      <stop offset="1" stop-color="#06B6D4"/>
+    </linearGradient>
+    <linearGradient id="cream_jelly" x1="190" y1="130" x2="370" y2="310" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F3E8FF"/>
+    </linearGradient>
+    <filter id="soft_shadow" x="100" y="100" width="312" height="312" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="16" stdDeviation="16" flood-color="#2E1065" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="115" fill="url(#cute_bg)"/>
+  <g filter="url(#soft_shadow)">
+    <rect x="146" y="186" width="180" height="180" rx="54" fill="url(#mint_jelly)"/>
+    <rect x="186" y="146" width="180" height="180" rx="54" fill="url(#cream_jelly)"/>
+    <rect x="336" y="126" width="52" height="52" rx="20" fill="#FDE047"/>
+    <circle cx="150" cy="350" r="16" fill="#FFFFFF" fill-opacity="0.8"/>
+    <path d="M 296 176 L 300 188 L 312 192 L 300 196 L 296 208 L 292 196 L 280 192 L 292 188 Z" fill="#A855F7"/>
+  </g>
+</svg>
