@@ -40,7 +40,17 @@ pub fn analyze_pair(
     overlap_opts: &OverlapOptions,
     fixed_opts: &FixedOptions,
 ) -> StitchResult<(OverlapResult, FixedElements)> {
-    let seam = find_overlap(top, bottom, overlap_opts)?;
     let fixed = detect_fixed(top, bottom, fixed_opts);
+    let top_bar = fixed.top_bar.map_or(0, |region| region.h);
+    let bottom_bar = fixed.bottom_bar.map_or(0, |region| region.h);
+    let fixed_height = top_bar.saturating_add(bottom_bar);
+    let seam = if fixed_height == 0 {
+        find_overlap(top, bottom, overlap_opts)?
+    } else {
+        let mut constrained = overlap_opts.clone();
+        let max_dy = top.height.saturating_sub(fixed_height);
+        constrained.max_dy = Some(constrained.max_dy.map_or(max_dy, |limit| limit.min(max_dy)));
+        find_overlap(top, bottom, &constrained)?
+    };
     Ok((seam, fixed))
 }

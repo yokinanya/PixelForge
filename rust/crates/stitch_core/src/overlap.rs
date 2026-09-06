@@ -29,6 +29,9 @@ pub struct OverlapOptions {
     pub min_overlap_ratio: f32,
     pub max_dx_tolerance: u32,
     pub jpeg_luma_threshold: u8,
+    /// Optional upper bound for the seam row after fixed-bar detection.
+    /// Candidates beyond this row cannot end within the scrollable content.
+    pub max_dy: Option<u32>,
 }
 
 impl Default for OverlapOptions {
@@ -37,6 +40,7 @@ impl Default for OverlapOptions {
             min_overlap_ratio: DEFAULT_MIN_OVERLAP_RATIO,
             max_dx_tolerance: DEFAULT_MAX_DX_TOLERANCE,
             jpeg_luma_threshold: JPEG_LUMA_THRESHOLD,
+            max_dy: None,
         }
     }
 }
@@ -358,11 +362,14 @@ pub fn search_scaled(
     opts: &OverlapOptions,
 ) -> StitchResult<OverlapResult> {
     let min_overlap = ((top.height as f32) * opts.min_overlap_ratio).round() as u32;
-    let max_dy = top.height.saturating_sub(min_overlap);
+    let natural_max_dy = top.height.saturating_sub(min_overlap);
+    let max_dy = opts
+        .max_dy
+        .map_or(natural_max_dy, |limit| limit.min(natural_max_dy));
     if max_dy == 0 {
         return Err(StitchError::Search(format!(
-            "图像过小，无法检测重叠 (height={})",
-            top.height
+            "没有可用的接缝范围 (height={}, max_dy={})",
+            top.height, max_dy
         )));
     }
     // Fixed-UI row mask and the top fixed region (strip starts after it).
@@ -763,5 +770,16 @@ mod tests {
             "repeated content should lower confidence, got {:.2}",
             res.confidence
         );
+    }
+
+    #[test]
+    fn search_respects_fixed_content_upper_bound() {
+        let (top, bottom) = make_pair(150);
+        let opts = OverlapOptions {
+            max_dy: Some(500),
+            ..OverlapOptions::default()
+        };
+        let result = find_overlap(&top, &bottom, &opts).unwrap();
+        assert!(result.best.dy <= 500);
     }
 }

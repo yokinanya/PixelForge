@@ -175,6 +175,17 @@ pub fn build_plan(
                     i + 1
                 )));
             }
+            let end_row_exclusive = crop_top[i] as i64 + next;
+            let content_end_exclusive = h.saturating_sub(crop_bottom[i]) as i64;
+            if end_row_exclusive > content_end_exclusive {
+                return Err(StitchError::Export(format!(
+                    "第 {} 个接缝超出第 {} 张图片有效内容范围 (结束行 {}，范围上限 {})",
+                    i + 1,
+                    i + 1,
+                    end_row_exclusive,
+                    content_end_exclusive
+                )));
+            }
             y = y.saturating_add(next as u32);
         } else {
             y = y.saturating_add(eff);
@@ -226,7 +237,10 @@ fn source_row_for_output(plan: &ComposePlan, output_y: u32) -> u32 {
 }
 
 /// Map an output row to `(image_index, local_row)`.
-fn map_row(plan: &ComposePlan, out_y: u32) -> (usize, u32) {
+fn map_row(plan: &ComposePlan, out_y: u32) -> StitchResult<(usize, u32)> {
+    if plan.offsets.is_empty() {
+        return Err(StitchError::Internal("合成布局没有图片偏移".into()));
+    }
     let mut lo = 0usize;
     let mut hi = plan.offsets.len() - 1;
     while lo < hi {
@@ -237,11 +251,13 @@ fn map_row(plan: &ComposePlan, out_y: u32) -> (usize, u32) {
             hi = mid - 1;
         }
     }
-    let local = out_y - plan.offsets[lo];
+    let local = out_y
+        .checked_sub(plan.offsets[lo])
+        .ok_or_else(|| StitchError::Internal("合成行偏移无效".into()))?;
     if lo + 1 == plan.offsets.len() && plan.last_tail_rows > 0 && local >= plan.last_main_rows {
-        return (lo, plan.last_tail_start + local - plan.last_main_rows);
+        return Ok((lo, plan.last_tail_start + local - plan.last_main_rows));
     }
-    (lo, local + plan.crop_top[lo])
+    Ok((lo, local + plan.crop_top[lo]))
 }
 
 /// Decode the images needed by one output block.
@@ -262,13 +278,30 @@ fn assemble_row(
     plan: &ComposePlan,
     imgs: &std::collections::HashMap<usize, RgbImage>,
     source_y: u32,
-) -> Vec<u8> {
-    let (k, local_y) = map_row(plan, source_y);
-    let img = &imgs[&k];
-    let row = &img.as_raw()[(local_y as usize * img.width() as usize * 3)
-        ..((local_y as usize + 1) * img.width() as usize * 3)];
+) -> StitchResult<Vec<u8>> {
+    let (k, local_y) = map_row(plan, source_y)?;
+    let img = imgs
+        .get(&k)
+        .ok_or_else(|| StitchError::Internal(format!("合成图片 {} 未加载", k + 1)))?;
+    let row_width = (img.width() as usize)
+        .checked_mul(3)
+        .ok_or_else(|| StitchError::Internal("合成行宽计算溢出".into()))?;
+    let row_start = (local_y as usize)
+        .checked_mul(row_width)
+        .ok_or_else(|| StitchError::Internal("合成行偏移计算溢出".into()))?;
+    let row_end = row_start
+        .checked_add(row_width)
+        .ok_or_else(|| StitchError::Internal("合成行结束位置溢出".into()))?;
+    let row = img.as_raw().get(row_start..row_end).ok_or_else(|| {
+        StitchError::Internal(format!(
+            "合成行超出图片范围: image={}, row={}, height={}",
+            k + 1,
+            local_y,
+            img.height()
+        ))
+    })?;
     if plan.width == plan.source_width && plan.x_offsets[k] == 0 {
-        return row.to_vec();
+        return Ok(row.to_vec());
     }
     let mut output = vec![0u8; plan.width as usize * 3];
     for x in 0..plan.width {
@@ -282,7 +315,7 @@ fn assemble_row(
         output[output_start..output_start + 3]
             .copy_from_slice(&row[source_start..source_start + 3]);
     }
-    output
+    Ok(output)
 }
 
 /// Export the stitched image to `out_path`, calling `progress(done, total)`
@@ -349,8 +382,8 @@ fn compose_to_path(
         let last_y = out_y + block_h - 1;
         let source_y0 = source_row_for_output(&plan, out_y);
         let source_y1 = source_row_for_output(&plan, last_y);
-        let (k0, _) = map_row(&plan, source_y0);
-        let (k1, _) = map_row(&plan, source_y1);
+        let (k0, _) = map_row(&plan, source_y0)?;
+        let (k1, _) = map_row(&plan, source_y1)?;
         let mut needed = HashSet::new();
         for k in k0..=k1 {
             needed.insert(k);
@@ -364,7 +397,7 @@ fn compose_to_path(
         imgs.extend(decode_needed(paths, &missing)?);
         for y in out_y..=last_y {
             let source_y = source_row_for_output(&plan, y);
-            let row = assemble_row(&plan, &imgs, source_y);
+            let row = assemble_row(&plan, &imgs, source_y)?;
             sink.write_row(&row)?;
             done += 1;
         }
@@ -565,6 +598,27 @@ mod tests {
         assert!(build_plan(1080, &[800, 800], &cfg).is_err());
         // Single image with zero seams is valid.
         assert!(build_plan(1080, &[800], &cfg).is_ok());
+    }
+
+    #[test]
+    fn compose_rejects_seam_that_exceeds_previous_image_after_next_crop() {
+        let p1 = temp_path("invalid_crop_a.png");
+        let p2 = temp_path("invalid_crop_b.png");
+        let out = temp_path("invalid_crop_out.png");
+        write_test_image(&p1, 64, 100, 0);
+        write_test_image(&p2, 64, 100, 1);
+        let mut config = two_image_config();
+        config.seams[0] = SeamEntry { dx: 0, dy: 90 };
+        config.top_bars = vec![0, 20];
+
+        let error = compose_to_file(&[p1.clone(), p2.clone()], &config, &out, |_, _| {})
+            .expect_err("an invalid seam must return an error");
+        assert!(error
+            .to_string()
+            .contains("第 1 个接缝超出第 1 张图片有效内容范围"));
+        for path in [&p1, &p2, &out] {
+            std::fs::remove_file(path).ok();
+        }
     }
 
     #[test]
