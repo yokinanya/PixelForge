@@ -24,7 +24,7 @@ ComposeRequest buildComposeRequest({
                   ? (settings.removeStatusBar
                         ? seams.first!.statusBarHeight
                         : 0)
-                  : (seams[i - 1]!.analysis.topBar?.h ?? 0),
+                  : seams[i - 1]!.bottomCut,
           ],
     bottomBars: images.length == 1
         ? [0]

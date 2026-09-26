@@ -67,6 +67,22 @@ void main() {
     _expectSize(parseImageSize(bmp), 1920, 1080);
   });
 
+  test('applies JPEG EXIF orientation to reported dimensions', () {
+    final jpeg = <int>[
+      0xFF, 0xD8,
+      0xFF, 0xE1, 0x00, 0x22,
+      ...'Exif'.codeUnits, 0, 0,
+      0x49, 0x49, 0x2A, 0, 0x08, 0, 0, 0,
+      0x01, 0,
+      0x12, 0x01, 0x03, 0, 0x01, 0, 0, 0, 0x06, 0, 0, 0,
+      0, 0, 0, 0,
+      0xFF, 0xC0, 0, 17, 8, 0x04, 0x38, 0x07, 0x80,
+      3, 1, 0x11, 0, 2, 0x11, 0, 3, 0x11, 0,
+    ];
+
+    _expectSize(parseImageSize(jpeg), 1080, 1920);
+  });
+
   test('rejects unsupported extensions explicitly', () {
     expect(
       () => imageExtensionForPath('capture.heic'),

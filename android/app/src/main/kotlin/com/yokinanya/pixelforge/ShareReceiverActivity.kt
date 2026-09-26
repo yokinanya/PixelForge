@@ -87,14 +87,21 @@ class ShareReceiverActivity : Activity() {
     }
 
     private fun extensionFor(uri: Uri): String {
+        val mimeType = contentResolver.getType(uri)
+        val fromMime = MimeTypeMap.getSingleton()
+            .getExtensionFromMimeType(mimeType)
+            ?.lowercase()
+        if (fromMime != null && fromMime in SUPPORTED_IMAGE_EXTENSIONS) return fromMime
+
         val displayName = queryDisplayName(uri)
         val fromName = displayName?.substringAfterLast('.', "")
-        if (!fromName.isNullOrBlank()) {
-            val sanitized = fromName.filter(Char::isLetterOrDigit).lowercase()
-            if (sanitized.isNotBlank()) return sanitized.take(MAX_EXTENSION_LENGTH)
+            ?.filter(Char::isLetterOrDigit)
+            ?.lowercase()
+        if (fromName != null && fromName in SUPPORTED_IMAGE_EXTENSIONS) return fromName
+        if (mimeType?.startsWith("image/", ignoreCase = true) == true) {
+            throw IllegalArgumentException("不支持的分享图片类型: $mimeType")
         }
-        val mimeType = contentResolver.getType(uri)
-        return MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType) ?: DEFAULT_EXTENSION
+        throw IllegalArgumentException("无法识别分享图片格式: $displayName")
     }
 
     private fun queryDisplayName(uri: Uri): String? {
@@ -122,7 +129,7 @@ class ShareReceiverActivity : Activity() {
 
     companion object {
         private const val SHARED_IMAGES_DIRECTORY = "shared_images"
-        private const val DEFAULT_EXTENSION = "png"
-        private const val MAX_EXTENSION_LENGTH = 8
+        private val SUPPORTED_IMAGE_EXTENSIONS =
+            setOf("png", "jpg", "jpeg", "webp", "gif", "bmp")
     }
 }

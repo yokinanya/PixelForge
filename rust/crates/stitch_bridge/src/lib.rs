@@ -155,6 +155,70 @@ struct RegionJson {
     h: u32,
 }
 
+fn analyze_pair_files(
+    top_path: &str,
+    bottom_path: &str,
+    options: PairOptions,
+) -> Result<PairAnalysis, String> {
+    let top = stitch_core::load_luma(std::path::Path::new(top_path))
+        .map_err(|error| error.to_string())?;
+    let bottom = stitch_core::load_luma(std::path::Path::new(bottom_path))
+        .map_err(|error| error.to_string())?;
+    let factor = analysis_scale_factor(top.width.max(bottom.width), top.height.max(bottom.height));
+    let top_analysis = downsample(&top, factor);
+    let bottom_analysis = downsample(&bottom, factor);
+    let fixed = stitch_core::detect_fixed(&top, &bottom, &FixedOptions::default());
+    let fixed_height = fixed
+        .top_bar
+        .map_or(0, |region| region.h)
+        .saturating_add(fixed.bottom_bar.map_or(0, |region| region.h));
+    let max_dy = (fixed_height > 0).then(|| top.height.saturating_sub(fixed_height) / factor);
+    let scaled_max_dx = options
+        .max_dx_tolerance
+        .saturating_add(factor.saturating_sub(1))
+        / factor;
+    let overlap_options = OverlapOptions {
+        min_overlap_ratio: options.min_overlap_ratio,
+        max_dx_tolerance: scaled_max_dx.max(1),
+        max_dy,
+        ..OverlapOptions::default()
+    };
+    let scaled_seam = stitch_core::find_overlap(&top_analysis, &bottom_analysis, &overlap_options)
+        .map_err(|error| error.to_string())?;
+    let seam = scale_candidates(&scaled_seam, Scale { factor });
+    Ok(PairAnalysis {
+        plausible: seam.plausible,
+        confidence: seam.confidence,
+        dx: seam.best.dx,
+        dy: seam.best.dy,
+        candidates: serialize_candidates(&seam),
+        top_bar: serialize_region(fixed.top_bar),
+        bottom_bar: serialize_region(fixed.bottom_bar),
+        bottom_whitespace: serialize_region(fixed.bottom_whitespace),
+    })
+}
+
+fn serialize_candidates(seam: &stitch_core::OverlapResult) -> Vec<CandidateJson> {
+    seam.candidates
+        .iter()
+        .take(seam.n_candidates)
+        .map(|candidate| CandidateJson {
+            dx: candidate.dx,
+            dy: candidate.dy,
+            cost: candidate.cost,
+        })
+        .collect()
+}
+
+fn serialize_region(region: Option<stitch_core::Region>) -> Option<RegionJson> {
+    region.map(|region| RegionJson {
+        x: region.x,
+        y: region.y,
+        w: region.w,
+        h: region.h,
+    })
+}
+
 /// Analyze one adjacent pair of screenshots.
 ///
 /// Returns JSON: `{"ok":true,"data":{...PairAnalysis}}`.
@@ -168,73 +232,13 @@ pub extern "C" fn stitch_analyze_pair(
     if out_json.is_null() {
         return 2;
     }
-    let result = run_ffi(|| -> Result<PairAnalysis, String> {
+    let result = run_ffi(|| {
         let top_path = unsafe { cstr_arg(top_path) }?;
         let bottom_path = unsafe { cstr_arg(bottom_path) }?;
         let opts_json = unsafe { cstr_arg(opts_json) }?;
         let opts: PairOptions =
             serde_json::from_str(&opts_json).map_err(|e| format!("选项解析失败: {e}"))?;
-        let top =
-            stitch_core::load_luma(std::path::Path::new(&top_path)).map_err(|e| e.to_string())?;
-        let bottom = stitch_core::load_luma(std::path::Path::new(&bottom_path))
-            .map_err(|e| e.to_string())?;
-        let factor =
-            analysis_scale_factor(top.width.max(bottom.width), top.height.max(bottom.height));
-        let top_analysis = downsample(&top, factor);
-        let bottom_analysis = downsample(&bottom, factor);
-        let scaled_max_dx = opts
-            .max_dx_tolerance
-            .saturating_add(factor.saturating_sub(1))
-            / factor;
-        let overlap_opts = OverlapOptions {
-            min_overlap_ratio: opts.min_overlap_ratio,
-            max_dx_tolerance: scaled_max_dx.max(1),
-            ..OverlapOptions::default()
-        };
-        let (scaled_seam, _) = stitch_core::analyze_pair(
-            &top_analysis,
-            &bottom_analysis,
-            &overlap_opts,
-            &FixedOptions::default(),
-        )
-        .map_err(|e| e.to_string())?;
-        let seam = scale_candidates(&scaled_seam, Scale { factor });
-        let fixed = stitch_core::detect_fixed(&top, &bottom, &FixedOptions::default());
-        let cands = seam
-            .candidates
-            .iter()
-            .take(seam.n_candidates)
-            .map(|c| CandidateJson {
-                dx: c.dx,
-                dy: c.dy,
-                cost: c.cost,
-            })
-            .collect();
-        Ok(PairAnalysis {
-            plausible: seam.plausible,
-            confidence: seam.confidence,
-            dx: seam.best.dx,
-            dy: seam.best.dy,
-            candidates: cands,
-            top_bar: fixed.top_bar.map(|r| RegionJson {
-                x: r.x,
-                y: r.y,
-                w: r.w,
-                h: r.h,
-            }),
-            bottom_bar: fixed.bottom_bar.map(|r| RegionJson {
-                x: r.x,
-                y: r.y,
-                w: r.w,
-                h: r.h,
-            }),
-            bottom_whitespace: fixed.bottom_whitespace.map(|r| RegionJson {
-                x: r.x,
-                y: r.y,
-                w: r.w,
-                h: r.h,
-            }),
-        })
+        analyze_pair_files(&top_path, &bottom_path, opts)
     });
     unsafe { write_response(out_json, result) }
 }

@@ -48,7 +48,7 @@ class SeamFocusPreview extends StatelessWidget {
         _CropPanel(
           image: bottom,
           cut: bottomCut,
-          horizontalOffset: dx,
+          horizontalOffset: -dx,
           maskAfterCut: false,
           onChanged: onBottomCutChanged,
           onCommit: onCommit,
@@ -145,9 +145,9 @@ class _CropPanelState extends State<_CropPanel> {
                   children: [
                     Positioned.fill(
                       child: ColoredBox(
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.surfaceContainerHighest,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHighest,
                       ),
                     ),
                     _imageLayer(scale, start),

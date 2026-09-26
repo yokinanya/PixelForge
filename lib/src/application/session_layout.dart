@@ -37,7 +37,7 @@ extension SessionLayout on SessionController {
   int _topBar(int index) {
     if (_images.length == 1) return 0;
     if (index == 0) return _seams.first!.analysis.topBar?.h ?? 0;
-    return _seams[index - 1]!.analysis.topBar?.h ?? 0;
+    return _seams[index - 1]!.bottomCut;
   }
 
   int _statusBar() {
@@ -59,6 +59,7 @@ extension SessionLayout on SessionController {
   }
 
   int _cropBottom(int index) {
+    if (_images.length == 1) return 0;
     if (index + 1 < _images.length) return _bottomBar(index);
     final bottomBar = _bottomBar(index);
     final whitespace = exportSettings.trimBottomWhitespace

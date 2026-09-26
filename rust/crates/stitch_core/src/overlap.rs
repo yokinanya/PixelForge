@@ -420,7 +420,7 @@ pub fn search_scaled(
         for ddy in -2i64..=2 {
             for ddx in -dx_tol..=dx_tol {
                 let dy = c.dy as i64 + ddy;
-                if dy < 0 || dy as u32 >= top.height {
+                if dy < 0 || dy as u32 >= top.height || dy as u32 > max_dy {
                     continue;
                 }
                 let cost = evaluate(
@@ -776,10 +776,13 @@ mod tests {
     fn search_respects_fixed_content_upper_bound() {
         let (top, bottom) = make_pair(150);
         let opts = OverlapOptions {
-            max_dy: Some(500),
+            max_dy: Some(150),
             ..OverlapOptions::default()
         };
         let result = find_overlap(&top, &bottom, &opts).unwrap();
-        assert!(result.best.dy <= 500);
+        assert!(result.best.dy <= 150);
+        assert!(result.candidates[..result.n_candidates]
+            .iter()
+            .all(|candidate| candidate.dy <= 150));
     }
 }
